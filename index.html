@@ -2,23 +2,31 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>우주 운석 피하기</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>우주 운석 피하기 (개선판)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+        /* Base styles for the body to prevent scrolling and set the theme */
         body {
             font-family: 'Orbitron', sans-serif;
             overflow: hidden;
+            touch-action: none; /* Prevents browser gestures like pull-to-refresh */
         }
+        /* Styling for the game canvas */
         canvas {
-            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%"><defs><style type="text/css"><![CDATA[circle{animation:starmove 60s linear infinite} @keyframes starmove{from{transform:translateY(0px)}to{transform:translateY(-1000px)}}]]></style></defs><rect width="100%" height="100%" fill="rgb(15, 23, 42)"></rect><g id="stars"></g><script><![CDATA[for(let i=0;i<200;i++){let star=document.createElementNS("http://www.w3.org/2000/svg","circle");star.setAttribute("cx",Math.random()*100+"%");star.setAttribute("cy",Math.random()*2000);star.setAttribute("r",Math.random()*1.5);star.setAttribute("fill","white");document.getElementById("stars").appendChild(star)}]]></script></svg>');
+            /* The background is now set dynamically via JavaScript to avoid issues with
+             * embedded scripts in CSS data URIs. A solid color is used as a fallback.
+            */
+            background-color: rgb(15, 23, 42);
             background-size: cover;
             background-position: 0 0;
             border-radius: 0.5rem;
             box-shadow: 0 0 20px rgba(118, 209, 255, 0.5);
             border: 2px solid rgb(56, 189, 248);
+            display: block;
         }
+        /* Utility classes for text and button glow effects */
         .text-shadow {
             text-shadow: 0 0 8px rgba(56, 189, 248, 0.8);
         }
@@ -30,434 +38,601 @@
             box-shadow: 0 0 25px rgba(56, 189, 248, 1), inset 0 0 10px rgba(56, 189, 248, 0.6);
             transform: scale(1.05);
         }
+        /* Hide element visually but keep it accessible to screen readers */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
     </style>
-    <!-- Chosen Palette: Cosmic Slate -->
-    <!-- Application Structure Plan: The application now features a Start Screen, an Active Game Screen with pause functionality, and a Game Over Screen. This sequential flow ensures intuitive user interaction. The Pause Menu (accessible via ESC) introduces a non-linear flow, allowing users to temporarily suspend and resume gameplay or restart, enhancing control and usability. The game canvas is now in portrait orientation, making it more suitable for mobile devices. UI overlays (menus, score) are distinct HTML elements for clarity and accessibility, separate from the Canvas rendering. -->
-    <!-- Visualization & Content Choices: Report Info: Game mechanics (movement, shooting, asteroids), plus new pause/resume/restart functionality. Goal: Create a playable and controllable game. Viz/Presentation Method: Game elements (ship, asteroids, bullets) are rendered on an HTML Canvas. UI elements (score, start, game over, pause menus) are HTML overlays, leveraging Tailwind for responsive styling. Interaction: Keyboard (A/D for movement, ESC for pause), mouse click for shooting, and button clicks for menu navigation. Justification: This hybrid approach remains optimal for web-based games, balancing performance with UI flexibility. Canvas is used for dynamic game rendering, while HTML/Tailwind handles static/overlay UI for better control and accessibility. Procedural graphics ensure the single-file constraint. New pause/resume logic enhances user control. The portrait canvas adapts to common mobile screen orientations. -->
-    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
 </head>
 <body class="bg-slate-900 text-white flex items-center justify-center h-screen">
 
-    <div id="gameContainer" class="relative">
-        <div id="scoreContainer" class="absolute top-4 left-4 text-lg text-shadow z-10 hidden">
-            <span>SCORE: </span><span id="scoreEl">0</span>
-        </div>
-
-        <div id="startModal" class="absolute inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center text-center p-4 z-20">
-            <h1 class="text-5xl md:text-6xl font-bold text-sky-300 text-shadow">ASTEROID SURVIVOR</h1>
-            <p class="mt-4 text-slate-300 max-w-md">하늘에서 떨어지는 운석을 파괴하고 최대한 오래 살아남으세요!</p>
-            <div class="mt-6 text-left bg-slate-800 p-4 rounded-lg border border-sky-500">
-                <h2 class="text-xl font-bold text-sky-400 mb-2">조작법</h2>
-                <p><span class="font-bold text-sky-300">A / D 키:</span> 좌우 이동</p>
-                <p><span class="font-bold text-sky-300">마우스 좌클릭:</span> 총알 발사</p>
-                <p class="mt-2"><span class="font-bold text-sky-300">ESC 키:</span> 게임 일시정지 / 메뉴</p>
-            </div>
-            <button id="startGameBtn" class="mt-8 bg-sky-500 text-slate-900 font-bold py-3 px-8 rounded-lg text-2xl button-glow">
-                START GAME
-            </button>
-        </div>
-        
-        <div id="gameOverModal" class="absolute inset-0 bg-black bg-opacity-60 flex-col items-center justify-center text-center p-4 z-20 hidden">
-            <h1 class="text-5xl md:text-6xl font-bold text-red-500 text-shadow">GAME OVER</h1>
-            <p class="mt-4 text-2xl">FINAL SCORE</p>
-            <p id="finalScoreEl" class="text-6xl font-bold text-sky-300 mt-2">0</p>
-            <button id="restartGameBtn" class="mt-8 bg-sky-500 text-slate-900 font-bold py-3 px-8 rounded-lg text-2xl button-glow">
-                RESTART
-            </button>
-        </div>
-
-        <div id="pauseModal" class="absolute inset-0 bg-black bg-opacity-60 flex-col items-center justify-center text-center p-4 z-20 hidden">
-            <h1 class="text-5xl md:text-6xl font-bold text-sky-300 text-shadow">PAUSED</h1>
-            <button id="resumeGameBtn" class="mt-8 bg-sky-500 text-slate-900 font-bold py-3 px-8 rounded-lg text-2xl button-glow">
-                RESUME
-            </button>
-            <button id="restartFromPauseBtn" class="mt-4 bg-gray-500 text-slate-900 font-bold py-3 px-8 rounded-lg text-2xl button-glow">
-                RESTART
-            </button>
-        </div>
-
+    <div id="gameContainer" class="relative flex flex-col items-center justify-center">
+        <!-- Canvas where the game is rendered -->
         <canvas id="gameCanvas"></canvas>
+
+        <!-- UI Overlays: Score, Modals, and Touch Controls -->
+        <div id="uiOverlay" class="absolute inset-0">
+            <div id="scoreContainer" class="absolute top-4 left-4 text-lg text-shadow z-10 hidden">
+                <span>SCORE: </span><span id="scoreEl">0</span>
+            </div>
+
+            <div id="startModal" class="absolute inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center text-center p-4 z-20">
+                <h1 class="text-5xl md:text-6xl font-bold text-sky-300 text-shadow">ASTEROID SURVIVOR</h1>
+                <p class="mt-4 text-slate-300 max-w-md">하늘에서 떨어지는 운석을 파괴하고 최대한 오래 살아남으세요!</p>
+                <div class="mt-6 text-left bg-slate-800 p-4 rounded-lg border border-sky-500">
+                    <h2 class="text-xl font-bold text-sky-400 mb-2">조작법</h2>
+                    <p><span class="font-bold text-sky-300">A/D 또는 ◀/▶:</span> 좌우 이동</p>
+                    <p><span class="font-bold text-sky-300">드래그:</span> 함선 이동 (모바일)</p>
+                    <p><span class="font-bold text-sky-300">마우스 좌클릭:</span> 총알 발사</p>
+                    <p class="mt-2"><span class="font-bold text-sky-300">ESC 키:</span> 게임 일시정지 / 메뉴</p>
+                </div>
+                <button id="startGameBtn" class="mt-8 bg-sky-500 text-slate-900 font-bold py-3 px-8 rounded-lg text-2xl button-glow">
+                    START GAME
+                </button>
+            </div>
+            
+            <div id="gameOverModal" class="absolute inset-0 bg-black bg-opacity-60 hidden flex-col items-center justify-center text-center p-4 z-20">
+                <h1 class="text-5xl md:text-6xl font-bold text-red-500 text-shadow">GAME OVER</h1>
+                <p class="mt-4 text-2xl">FINAL SCORE</p>
+                <p id="finalScoreEl" class="text-6xl font-bold text-sky-300 mt-2">0</p>
+                <button id="restartGameBtn" class="mt-8 bg-sky-500 text-slate-900 font-bold py-3 px-8 rounded-lg text-2xl button-glow">
+                    RESTART
+                </button>
+            </div>
+
+            <div id="pauseModal" class="absolute inset-0 bg-black bg-opacity-60 hidden flex-col items-center justify-center text-center p-4 z-20">
+                <h1 class="text-5xl md:text-6xl font-bold text-sky-300 text-shadow">PAUSED</h1>
+                <button id="resumeGameBtn" class="mt-8 bg-sky-500 text-slate-900 font-bold py-3 px-8 rounded-lg text-2xl button-glow">
+                    RESUME
+                </button>
+                <button id="restartFromPauseBtn" class="mt-4 bg-gray-500 text-slate-900 font-bold py-3 px-8 rounded-lg text-2xl button-glow">
+                    RESTART
+                </button>
+            </div>
+            
+            <!-- Mobile touch controls container -->
+            <div id="touchControls" class="absolute bottom-0 left-0 right-0 h-1/4 z-30 hidden">
+                 <button id="touchShootBtn" class="absolute bottom-5 right-5 w-20 h-20 bg-yellow-400/50 border-2 border-yellow-300 rounded-full flex items-center justify-center text-white text-shadow">
+                     <span class="sr-only">Shoot</span>
+                     <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 19-2-2"/><path d="m15 13-3 3L3 3l7 19 3-10 6-4Z"/></svg>
+                 </button>
+            </div>
+        </div>
     </div>
 
     <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const scoreEl = document.getElementById('scoreEl');
-        const finalScoreEl = document.getElementById('finalScoreEl');
-        const startModal = document.getElementById('startModal');
-        const gameOverModal = document.getElementById('gameOverModal');
-        const pauseModal = document.getElementById('pauseModal');
-        const startGameBtn = document.getElementById('startGameBtn');
-        const restartGameBtn = document.getElementById('restartGameBtn');
-        const resumeGameBtn = document.getElementById('resumeGameBtn');
-        const restartFromPauseBtn = document.getElementById('restartFromPauseBtn');
-        const scoreContainer = document.getElementById('scoreContainer');
+        // Wrap the entire script in a DOMContentLoaded event listener.
+        // This ensures that the script runs only after the entire HTML document
+        // has been loaded and parsed, preventing errors from trying to access
+        // elements that don't exist yet.
+        window.addEventListener('DOMContentLoaded', () => {
+            // --- DOM Element Selection ---
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            const scoreEl = document.getElementById('scoreEl');
+            const finalScoreEl = document.getElementById('finalScoreEl');
+            const startModal = document.getElementById('startModal');
+            const gameOverModal = document.getElementById('gameOverModal');
+            const pauseModal = document.getElementById('pauseModal');
+            const startGameBtn = document.getElementById('startGameBtn');
+            const restartGameBtn = document.getElementById('restartGameBtn');
+            const resumeGameBtn = document.getElementById('resumeGameBtn');
+            const restartFromPauseBtn = document.getElementById('restartFromPauseBtn');
+            const scoreContainer = document.getElementById('scoreContainer');
+            const gameContainer = document.getElementById('gameContainer');
+            const uiOverlay = document.getElementById('uiOverlay');
+            const touchControls = document.getElementById('touchControls');
+            const touchShootBtn = document.getElementById('touchShootBtn');
 
-        let animationId;
-        let score = 0;
-        let player;
-        let projectiles = [];
-        let asteroids = [];
-        let particles = [];
-        let keys = { a: { pressed: false }, d: { pressed: false } };
-        let asteroidSpawnInterval;
-        let gameActive = false;
-        let gamePaused = false;
-        let lastFrameTime = 0; // For time-based score increase
-        let scorePerSecond = 5; // Score gained per second
-        
-        function setCanvasSize() {
-            // Portrait orientation: height is greater than width
-            const maxWidth = 500; 
-            const maxHeight = 750; // Increased height relative to width for portrait
-            const aspectRatio = maxWidth / maxHeight;
-            
-            let width = window.innerWidth * 0.8;
-            let height = window.innerHeight * 0.8;
+            // --- Game State Variables ---
+            let animationId;
+            let score = 0;
+            let player;
+            let projectiles = [];
+            let asteroids = [];
+            let particles = [];
+            const keys = { a: { pressed: false }, d: { pressed: false }, ArrowLeft: { pressed: false }, ArrowRight: { pressed: false } };
+            let asteroidSpawnTimeout;
+            let gameActive = false;
+            let gamePaused = false;
+            let lastFrameTime = 0;
+            const scorePerSecond = 5;
 
-            if (width / height > aspectRatio) { // If window is wider than canvas aspect ratio
-                width = height * aspectRatio;
-            } else { // If window is taller than canvas aspect ratio
-                height = width / aspectRatio;
-            }
-            
-            width = Math.min(width, maxWidth);
-            height = Math.min(height, maxHeight);
-
-            canvas.width = width;
-            canvas.height = height;
-        }
-
-        class Player {
-            constructor() {
-                this.width = canvas.width * 0.12; // Adjusted for portrait mode
-                this.height = this.width * 0.5;
-                this.position = {
-                    x: (canvas.width / 2) - (this.width / 2),
-                    y: canvas.height - this.height - 20 // Slightly higher from bottom
+            // --- Utility Functions ---
+            /**
+             * Converts screen coordinates (like from a mouse or touch event) to canvas-local coordinates.
+             * @param {number} screenX - The x-coordinate on the screen.
+             * @param {number} screenY - The y-coordinate on the screen.
+             * @returns {{x: number, y: number}} The coordinates relative to the canvas.
+             */
+            function getCanvasCoords(screenX, screenY) {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                return {
+                    x: (screenX - rect.left) * scaleX,
+                    y: (screenY - rect.top) * scaleY,
                 };
-                this.velocity = { x: 0, y: 0 };
-                this.speed = 5;
             }
 
-            draw() {
-                ctx.save();
-                ctx.beginPath();
-                ctx.moveTo(this.position.x + this.width / 2, this.position.y);
-                ctx.lineTo(this.position.x, this.position.y + this.height);
-                ctx.lineTo(this.position.x + this.width, this.position.y + this.height);
-                ctx.closePath();
-                ctx.fillStyle = 'white';
-                ctx.shadowColor = 'cyan';
-                ctx.shadowBlur = 10;
-                ctx.fill();
-                ctx.restore();
-            }
-
-            update() {
-                this.position.x += this.velocity.x;
-                if (this.position.x <= 0) {
-                    this.position.x = 0;
-                } else if (this.position.x + this.width >= canvas.width) {
-                    this.position.x = canvas.width - this.width;
+            // --- Game Setup ---
+            /**
+             * Generates and applies the animated starry background to the canvas.
+             * This is done in JS to avoid issues with scripts embedded in CSS.
+             */
+            function setStarryBackground() {
+                let circles = '';
+                for (let i = 0; i < 200; i++) {
+                    const cx = Math.random() * 100;
+                    const cy = Math.random() * 2000;
+                    const r = Math.random() * 1.5;
+                    circles += `<circle cx="${cx}%" cy="${cy}" r="${r}" fill="white"/>`;
                 }
-                this.draw();
-            }
-        }
 
-        class Projectile {
-            constructor({ position, velocity }) {
-                this.position = position;
-                this.velocity = velocity;
-                this.radius = 4;
-            }
-
-            draw() {
-                ctx.beginPath();
-                ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2);
-                ctx.fillStyle = '#facc15';
-                ctx.shadowColor = '#facc15';
-                ctx.shadowBlur = 10;
-                ctx.fill();
-                ctx.closePath();
-            }
-
-            update() {
-                this.position.x += this.velocity.x;
-                this.position.y += this.velocity.y;
-                this.draw();
-            }
-        }
-        
-        class Asteroid {
-            constructor({ position, velocity }) {
-                this.position = position;
-                this.velocity = velocity;
-                this.radius = canvas.width * 0.05; // Adjusted size for portrait
-                this.sides = Math.floor(Math.random() * 3) + 5;
-                this.angle = 0;
-                this.rotationSpeed = (Math.random() - 0.5) * 0.04;
-            }
-
-            draw() {
-                ctx.save();
-                ctx.translate(this.position.x, this.position.y);
-                ctx.rotate(this.angle);
-                ctx.beginPath();
-                ctx.moveTo(this.radius, 0);
-                for (let i = 1; i <= this.sides; i++) {
-                    const angle = (i / this.sides) * Math.PI * 2;
-                    const dist = this.radius * (0.8 + Math.random() * 0.4);
-                    ctx.lineTo(dist * Math.cos(angle), dist * Math.sin(angle));
-                }
-                ctx.closePath();
-                ctx.strokeStyle = '#9ca3af';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                ctx.restore();
-            }
-
-            update() {
-                this.position.x += this.velocity.x;
-                this.position.y += this.velocity.y;
-                this.angle += this.rotationSpeed;
-                this.draw();
-            }
-        }
-
-        class Particle {
-            constructor({ position, velocity, radius, color, fades }) {
-                this.position = position;
-                this.velocity = velocity;
-                this.radius = radius;
-                this.color = color;
-                this.opacity = 1;
-                this.fades = fades;
-            }
-
-            draw() {
-                ctx.save();
-                ctx.globalAlpha = this.opacity;
-                ctx.beginPath();
-                ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2);
-                ctx.fillStyle = this.color;
-                ctx.fill();
-                ctx.closePath();
-                ctx.restore();
-            }
-
-            update() {
-                this.position.x += this.velocity.x;
-                this.position.y += this.velocity.y;
-                if (this.fades) this.opacity -= 0.02;
-                this.draw();
-            }
-        }
-
-        function spawnAsteroids() {
-            const spawnDelay = Math.random() * 2000 + 1000;
-            asteroidSpawnInterval = setTimeout(() => {
-                if (!gameActive || gamePaused) return; // Prevent spawning if paused
+                const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%"><defs><style>circle{animation:starmove 60s linear infinite} @keyframes starmove{from{transform:translateY(0px)}to{transform:translateY(-1000px)}}</style></defs><rect width="100%" height="100%" fill="rgb(15, 23, 42)"></rect><g>${circles}</g></svg>`;
                 
-                const x = Math.random() * canvas.width;
-                const speed = (canvas.height / 3000) * 30; 
+                const encodedSvg = btoa(svg);
+                canvas.style.backgroundImage = `url("data:image/svg+xml;base64,${encodedSvg}")`;
+            }
+
+            /**
+             * Sets the canvas size to maintain a portrait aspect ratio while fitting within the window.
+             * Also resizes the UI overlay to match the canvas.
+             */
+            function setCanvasSize() {
+                const maxWidth = 500;
+                const maxHeight = 750;
+                const aspectRatio = maxWidth / maxHeight;
                 
-                asteroids.push(new Asteroid({
-                    position: { x: x, y: -30 },
-                    velocity: { x: 0, y: speed }
-                }));
-                spawnAsteroids();
-            }, spawnDelay);
-        }
-        
-        function createExplosion(object, color) {
-            for (let i = 0; i < 15; i++) {
-                particles.push(new Particle({
-                    position: {
-                        x: object.position.x + (object.width ? object.width / 2 : 0),
-                        y: object.position.y + (object.height ? object.height / 2 : 0)
-                    },
-                    velocity: {
-                        x: (Math.random() - 0.5) * 4,
-                        y: (Math.random() - 0.5) * 4
-                    },
-                    radius: Math.random() * 3,
-                    color: color,
-                    fades: true
-                }));
-            }
-        }
+                let newWidth = window.innerWidth * 0.95;
+                let newHeight = window.innerHeight * 0.95;
 
-        function init() {
-            setCanvasSize();
-            player = new Player();
-            projectiles = [];
-            asteroids = [];
-            particles = [];
-            score = 0;
-            scoreEl.innerText = score;
-            finalScoreEl.innerText = score;
-            gameActive = true;
-            gamePaused = false;
-            lastFrameTime = performance.now(); // Initialize lastFrameTime
-        }
-
-        function animate(currentTime) {
-            if (!gameActive || gamePaused) return; // Stop animation if paused
-            animationId = requestAnimationFrame(animate);
-
-            // Calculate delta time for consistent score increase
-            const deltaTime = currentTime - lastFrameTime;
-            lastFrameTime = currentTime;
-
-            // Increase score over time
-            score += (scorePerSecond * (deltaTime / 1000));
-            scoreEl.innerText = Math.floor(score); // Display as integer
-            
-            ctx.fillStyle = '#050510'; 
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            player.velocity.x = 0;
-            if (keys.a.pressed && player.position.x > 0) {
-                player.velocity.x = -player.speed;
-            }
-            if (keys.d.pressed && player.position.x + player.width < canvas.width) {
-                player.velocity.x = player.speed;
-            }
-            player.update();
-
-            particles.forEach((particle, index) => {
-                if (particle.opacity <= 0) {
-                    particles.splice(index, 1);
+                if (newWidth / newHeight > aspectRatio) {
+                    newWidth = newHeight * aspectRatio;
                 } else {
-                    particle.update();
+                    newHeight = newWidth / aspectRatio;
                 }
-            });
-
-            projectiles.forEach((projectile, pIndex) => {
-                projectile.update();
-                if (projectile.position.y + projectile.radius < 0) {
-                    setTimeout(() => projectiles.splice(pIndex, 1), 0);
-                }
-            });
-
-            asteroids.forEach((asteroid, aIndex) => {
-                asteroid.update();
                 
-                const dist = Math.hypot(player.position.x + player.width / 2 - asteroid.position.x, player.position.y + player.height / 2 - asteroid.position.y);
-                if (dist - asteroid.radius - player.width/2 < 1) {
-                    endGame();
-                    createExplosion(player, 'white');
+                newWidth = Math.min(newWidth, maxWidth);
+                newHeight = Math.min(newHeight, maxHeight);
+
+                canvas.width = newWidth;
+                canvas.height = newHeight;
+                
+                const style = { width: `${newWidth}px`, height: `${newHeight}px` };
+                Object.assign(uiOverlay.style, style);
+                Object.assign(gameContainer.style, style);
+            }
+            
+            /**
+             * Rescales and repositions all active game objects when the canvas size changes.
+             * @param {number} oldWidth - The previous canvas width.
+             * @param {number} oldHeight - The previous canvas height.
+             */
+            function rescaleGameElements(oldWidth, oldHeight) {
+                const scaleX = canvas.width / oldWidth;
+                const scaleY = canvas.height / oldHeight;
+
+                if (player) player.rescale(scaleX, scaleY);
+                [...projectiles, ...asteroids, ...particles].forEach(p => p.rescale(scaleX, scaleY));
+            }
+
+            // --- Game Object Classes ---
+            class Player {
+                constructor() {
+                    this.relWidth = 0.12;
+                    this.relHeight = 0.04;
+                    this.width = canvas.width * this.relWidth;
+                    this.height = canvas.height * this.relHeight;
+                    this.position = {
+                        x: (canvas.width / 2) - (this.width / 2),
+                        y: canvas.height - this.height - 20
+                    };
+                    this.velocity = { x: 0, y: 0 };
+                    this.speed = 7;
                 }
 
-                if (asteroid.position.y - asteroid.radius > canvas.height) {
-                    setTimeout(() => asteroids.splice(aIndex, 1), 0);
+                draw() {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(this.position.x + this.width / 2, this.position.y);
+                    ctx.lineTo(this.position.x, this.position.y + this.height);
+                    ctx.lineTo(this.position.x + this.width, this.position.y + this.height);
+                    ctx.closePath();
+                    ctx.fillStyle = 'white';
+                    ctx.shadowColor = 'cyan';
+                    ctx.shadowBlur = 10;
+                    ctx.fill();
+                    ctx.restore();
                 }
 
-                projectiles.forEach((projectile, pIndex) => {
-                    const dist = Math.hypot(projectile.position.x - asteroid.position.x, projectile.position.y - asteroid.position.y);
-                    if (dist - asteroid.radius - projectile.radius < 1) {
-                        createExplosion(asteroid, '#9ca3af');
-                        score += 100; // Additional score for destroying asteroid
-                        scoreEl.innerText = Math.floor(score);
-                        setTimeout(() => {
-                            asteroids.splice(aIndex, 1);
-                            projectiles.splice(pIndex, 1);
-                        }, 0);
+                update() {
+                    this.position.x += this.velocity.x;
+                    if (this.position.x <= 0) this.position.x = 0;
+                    if (this.position.x + this.width >= canvas.width) this.position.x = canvas.width - this.width;
+                    this.draw();
+                }
+                
+                rescale(scaleX, scaleY) {
+                    this.position.x *= scaleX;
+                    this.position.y *= scaleY;
+                    this.width = canvas.width * this.relWidth;
+                    this.height = canvas.height * this.relHeight;
+                    this.speed *= scaleX;
+                }
+            }
+
+            class Projectile {
+                constructor({ position, velocity }) {
+                    this.relRadius = 0.01;
+                    this.position = position;
+                    this.velocity = velocity;
+                    this.radius = canvas.width * this.relRadius;
+                }
+
+                draw() {
+                    // *** BUG FIX: Encapsulate drawing state ***
+                    // ctx.save() and ctx.restore() prevent styles (like shadowColor)
+                    // from "leaking" and affecting other elements drawn on the canvas.
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = '#facc15';
+                    ctx.shadowColor = '#facc15';
+                    ctx.shadowBlur = 10;
+                    ctx.fill();
+                    ctx.closePath();
+                    ctx.restore();
+                }
+
+                update() {
+                    this.position.x += this.velocity.x;
+                    this.position.y += this.velocity.y;
+                    this.draw();
+                }
+                
+                rescale(scaleX, scaleY) {
+                    this.position.x *= scaleX;
+                    this.position.y *= scaleY;
+                    this.velocity.x *= scaleX;
+                    this.velocity.y *= scaleY;
+                    this.radius = canvas.width * this.relRadius;
+                }
+            }
+            
+            class Asteroid {
+                constructor({ position, velocity }) {
+                    this.relRadius = 0.05;
+                    this.position = position;
+                    this.velocity = velocity;
+                    this.radius = canvas.width * this.relRadius;
+                    this.sides = Math.floor(Math.random() * 3) + 5;
+                    this.angle = 0;
+                    this.rotationSpeed = (Math.random() - 0.5) * 0.04;
+                }
+
+                draw() {
+                    ctx.save();
+                    ctx.translate(this.position.x, this.position.y);
+                    ctx.rotate(this.angle);
+                    ctx.beginPath();
+                    ctx.moveTo(this.radius, 0);
+                    for (let i = 1; i <= this.sides; i++) {
+                        const angle = (i / this.sides) * Math.PI * 2;
+                        const dist = this.radius * (0.8 + Math.random() * 0.4);
+                        ctx.lineTo(dist * Math.cos(angle), dist * Math.sin(angle));
+                    }
+                    ctx.closePath();
+                    ctx.strokeStyle = '#9ca3af';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                update() {
+                    this.position.x += this.velocity.x;
+                    this.position.y += this.velocity.y;
+                    this.angle += this.rotationSpeed;
+                    this.draw();
+                }
+                
+                rescale(scaleX, scaleY) {
+                    this.position.x *= scaleX;
+                    this.position.y *= scaleY;
+                    this.velocity.x *= scaleX;
+                    this.velocity.y *= scaleY;
+                    this.radius = canvas.width * this.relRadius;
+                }
+            }
+
+            class Particle {
+                constructor({ position, velocity, radius, color, fades }) {
+                    this.position = position;
+                    this.velocity = velocity;
+                    this.radius = radius;
+                    this.color = color;
+                    this.opacity = 1;
+                    this.fades = fades;
+                }
+
+                draw() {
+                    ctx.save();
+                    ctx.globalAlpha = this.opacity;
+                    ctx.beginPath();
+                    ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = this.color;
+                    ctx.fill();
+                    ctx.closePath();
+                    ctx.restore();
+                }
+
+                update() {
+                    this.position.x += this.velocity.x;
+                    this.position.y += this.velocity.y;
+                    if (this.fades) this.opacity -= 0.02;
+                    this.draw();
+                }
+                
+                rescale(scaleX, scaleY) {
+                    this.position.x *= scaleX;
+                    this.position.y *= scaleY;
+                    this.velocity.x *= scaleX;
+                    this.velocity.y *= scaleY;
+                    this.radius *= Math.min(scaleX, scaleY);
+                }
+            }
+
+            // --- Game Logic ---
+            function spawnAsteroids() {
+                clearTimeout(asteroidSpawnTimeout);
+                
+                const spawnDelay = Math.random() * 2000 + 1000;
+                asteroidSpawnTimeout = setTimeout(() => {
+                    if (!gameActive || gamePaused) return;
+                    
+                    const x = Math.random() * canvas.width;
+                    const speed = canvas.height * 0.012;
+                    
+                    asteroids.push(new Asteroid({
+                        position: { x: x, y: -30 },
+                        velocity: { x: 0, y: speed }
+                    }));
+                    spawnAsteroids();
+                }, spawnDelay);
+            }
+            
+            function createExplosion(object, color) {
+                const explosionCenter = {
+                    x: object.position.x + (object.width ? object.width / 2 : 0),
+                    y: object.position.y + (object.height ? object.height / 2 : 0)
+                };
+                for (let i = 0; i < 15; i++) {
+                    particles.push(new Particle({
+                        position: { ...explosionCenter },
+                        velocity: {
+                            x: (Math.random() - 0.5) * (Math.random() * 6),
+                            y: (Math.random() - 0.5) * (Math.random() * 6)
+                        },
+                        radius: Math.random() * 3,
+                        color: color,
+                        fades: true
+                    }));
+                }
+            }
+            
+            function shoot() {
+                 if (!gameActive || gamePaused) return;
+                 projectiles.push(new Projectile({
+                    position: { x: player.position.x + player.width / 2, y: player.position.y },
+                    velocity: { x: 0, y: -10 }
+                }));
+            }
+
+            function checkPlayerCollision(asteroid) {
+                const playerCenterX = player.position.x + player.width / 2;
+                const playerCenterY = player.position.y + player.height / 2;
+                const dx = Math.abs(asteroid.position.x - playerCenterX);
+                const dy = Math.abs(asteroid.position.y - playerCenterY);
+                if (dx > (player.width / 2 + asteroid.radius)) { return false; }
+                if (dy > (player.height / 2 + asteroid.radius)) { return false; }
+                if (dx <= (player.width / 2)) { return true; } 
+                if (dy <= (player.height / 2)) { return true; }
+                const cornerDistance_sq = (dx - player.width / 2)**2 + (dy - player.height / 2)**2;
+                return (cornerDistance_sq <= (asteroid.radius**2));
+            }
+
+            // --- Main Game Loop ---
+            function animate(currentTime) {
+                if (gamePaused) return;
+                animationId = requestAnimationFrame(animate);
+
+                const deltaTime = currentTime - lastFrameTime;
+                lastFrameTime = currentTime;
+                score += (scorePerSecond * (deltaTime / 1000));
+                scoreEl.innerText = Math.floor(score);
+                
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.5)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                player.velocity.x = 0;
+                if (keys.a.pressed || keys.ArrowLeft.pressed) player.velocity.x = -player.speed;
+                if (keys.d.pressed || keys.ArrowRight.pressed) player.velocity.x = player.speed;
+                player.update();
+
+                particles.forEach(p => p.update());
+                projectiles.forEach(p => p.update());
+                asteroids.forEach(a => a.update());
+
+                particles = particles.filter(p => p.opacity > 0);
+                projectiles = projectiles.filter(p => p.position.y + p.radius > 0);
+                
+                const remainingAsteroids = [];
+                asteroids.forEach(asteroid => {
+                    let asteroidDestroyed = false;
+                    projectiles = projectiles.filter(projectile => {
+                        const dist = Math.hypot(projectile.position.x - asteroid.position.x, projectile.position.y - asteroid.position.y);
+                        if (dist - asteroid.radius - projectile.radius < 1) {
+                            createExplosion(asteroid, '#9ca3af');
+                            score += 100;
+                            scoreEl.innerText = Math.floor(score);
+                            asteroidDestroyed = true;
+                            return false;
+                        }
+                        return true;
+                    });
+
+                    if (checkPlayerCollision(asteroid)) {
+                        createExplosion(player, 'white');
+                        endGame();
+                    }
+
+                    if (!asteroidDestroyed && asteroid.position.y - asteroid.radius < canvas.height) {
+                        remainingAsteroids.push(asteroid);
                     }
                 });
-            });
-        }
-        
-        function startGame() {
-            init();
-            gameActive = true;
-            gamePaused = false;
-            startModal.classList.add('hidden');
-            gameOverModal.classList.add('hidden');
-            pauseModal.classList.add('hidden'); 
-            scoreContainer.classList.remove('hidden');
-            animate(performance.now()); // Pass initial time to animate
-            setTimeout(spawnAsteroids, 1500); // Changed from 3000ms to 1500ms
-        }
+                asteroids = remainingAsteroids;
+            }
 
-        function endGame() {
-            gameActive = false;
-            cancelAnimationFrame(animationId);
-            clearTimeout(asteroidSpawnInterval);
-            gameOverModal.classList.remove('hidden');
-            finalScoreEl.innerText = Math.floor(score);
-            scoreContainer.classList.add('hidden');
-        }
+            // --- Game State Management ---
+            function init() {
+                player = new Player();
+                projectiles = [];
+                asteroids = [];
+                particles = [];
+                score = 0;
+                scoreEl.innerText = score;
+                finalScoreEl.innerText = score;
+                lastFrameTime = performance.now();
+            }
 
-        function togglePause() {
-            if (!gameActive || gameOverModal.classList.contains('flex')) return; 
-
-            gamePaused = !gamePaused;
-            if (gamePaused) {
-                cancelAnimationFrame(animationId);
-                clearTimeout(asteroidSpawnInterval);
-                pauseModal.classList.remove('hidden');
-                pauseModal.classList.add('flex'); 
-                scoreContainer.classList.add('hidden');
-            } else {
-                pauseModal.classList.add('hidden');
+            function startGame() {
+                init();
+                gameActive = true;
+                gamePaused = false;
+                startModal.classList.add('hidden');
+                gameOverModal.classList.remove('flex');
+                gameOverModal.classList.add('hidden');
                 pauseModal.classList.remove('flex');
+                pauseModal.classList.add('hidden');
                 scoreContainer.classList.remove('hidden');
-                lastFrameTime = performance.now(); // Reset lastFrameTime to prevent score jump
+                touchControls.classList.remove('hidden');
+                
+                cancelAnimationFrame(animationId);
                 animate(performance.now());
-                setTimeout(spawnAsteroids, 100); 
+                spawnAsteroids();
             }
-        }
 
-        startGameBtn.addEventListener('click', startGame);
-        restartGameBtn.addEventListener('click', startGame);
-        resumeGameBtn.addEventListener('click', togglePause);
-        restartFromPauseBtn.addEventListener('click', startGame);
-
-        window.addEventListener('keydown', ({ key }) => {
-            if (key === 'Escape') {
-                togglePause();
-                return;
+            function endGame() {
+                gameActive = false;
+                cancelAnimationFrame(animationId);
+                clearTimeout(asteroidSpawnTimeout);
+                
+                finalScoreEl.innerText = Math.floor(score);
+                gameOverModal.classList.remove('hidden');
+                gameOverModal.classList.add('flex');
+                scoreContainer.classList.add('hidden');
+                touchControls.classList.add('hidden');
             }
-            if (!gameActive || gamePaused) return; 
-            switch (key.toLowerCase()) {
-                case 'a': keys.a.pressed = true; break;
-                case 'd': keys.d.pressed = true; break;
-            }
-        });
 
-        window.addEventListener('keyup', ({ key }) => {
-            if (!gameActive || gamePaused) return; 
-            switch (key.toLowerCase()) {
-                case 'a': keys.a.pressed = false; break;
-                case 'd': keys.d.pressed = false; break;
-            }
-        });
+            function togglePause() {
+                if (!gameActive) return;
 
-        window.addEventListener('click', (event) => {
-            if (!gameActive || gamePaused || !startModal.classList.contains('hidden') || gameOverModal.classList.contains('flex')) return;
+                gamePaused = !gamePaused;
+                if (gamePaused) {
+                    cancelAnimationFrame(animationId);
+                    clearTimeout(asteroidSpawnTimeout);
+                    pauseModal.classList.remove('hidden');
+                    pauseModal.classList.add('flex');
+                    scoreContainer.classList.add('hidden');
+                    touchControls.classList.add('hidden');
+                } else {
+                    pauseModal.classList.add('hidden');
+                    pauseModal.classList.remove('flex');
+                    scoreContainer.classList.remove('hidden');
+                    touchControls.classList.remove('hidden');
+                    lastFrameTime = performance.now();
+                    animate(performance.now());
+                    spawnAsteroids();
+                }
+            }
+
+            // --- Event Listeners ---
+            startGameBtn.addEventListener('click', startGame);
+            restartGameBtn.addEventListener('click', startGame);
+            resumeGameBtn.addEventListener('click', togglePause);
+            restartFromPauseBtn.addEventListener('click', startGame);
+
+            window.addEventListener('keydown', ({ key }) => {
+                if (key === 'Escape') {
+                    togglePause();
+                    return;
+                }
+                if (keys[key] !== undefined) keys[key].pressed = true;
+            });
+
+            window.addEventListener('keyup', ({ key }) => {
+                if (keys[key] !== undefined) keys[key].pressed = false;
+            });
             
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
+            // Event listener for shooting with a mouse click on the canvas.
+            canvas.addEventListener('click', shoot);
+            
+            // Event listener for the dedicated mobile shoot button.
+            touchShootBtn.addEventListener('click', (e) => {
+                e.preventDefault(); // Prevents the click from also firing the canvas click event.
+                shoot();
+            });
 
-            const canvasClickX = (event.clientX - rect.left) * scaleX;
-            const canvasClickY = (event.clientY - rect.top) * scaleY;
+            let touchStartX = null;
+            let playerStartDragX = null;
+            
+            canvas.addEventListener('touchstart', (e) => {
+                if (!gameActive || gamePaused) return;
+                // Handle only the first touch to prevent multi-touch issues.
+                if (e.touches.length === 1) {
+                    touchStartX = e.touches[0].clientX;
+                    if (player) playerStartDragX = player.position.x;
+                }
+            });
 
-            projectiles.push(new Projectile({
-                position: { x: player.position.x + player.width / 2, y: player.position.y },
-                velocity: { x: 0, y: -10 }
-            }));
-        });
-        
-        window.addEventListener('resize', () => {
-            if (!gameActive) {
+            canvas.addEventListener('touchmove', (e) => {
+                if (!gameActive || gamePaused || touchStartX === null || !player) return;
+                
+                const touchCurrentX = e.touches[0].clientX;
+                const deltaX = touchCurrentX - touchStartX;
+                
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                
+                player.position.x = playerStartDragX + (deltaX * scaleX);
+            });
+
+            canvas.addEventListener('touchend', () => {
+                touchStartX = null;
+                playerStartDragX = null;
+            });
+
+            window.addEventListener('resize', () => {
+                const oldWidth = canvas.width;
+                const oldHeight = canvas.height;
                 setCanvasSize();
-            }
-        });
+                if (gameActive) {
+                    rescaleGameElements(oldWidth, oldHeight);
+                }
+            });
 
-        setCanvasSize(); 
+            // --- Initial Setup ---
+            setCanvasSize();
+            setStarryBackground();
+        });
     </script>
 </body>
 </html>
