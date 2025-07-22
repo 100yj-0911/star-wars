@@ -17,7 +17,7 @@
         canvas {
             /* The background is now set dynamically via JavaScript to avoid issues with
              * embedded scripts in CSS data URIs. A solid color is used as a fallback.
-            */
+             */
             background-color: rgb(15, 23, 42);
             background-size: cover;
             background-position: 0 0;
@@ -59,7 +59,8 @@
         <canvas id="gameCanvas"></canvas>
 
         <!-- UI Overlays: Score, Modals, and Touch Controls -->
-        <div id="uiOverlay" class="absolute inset-0">
+        <!-- uiOverlay는 기본적으로 클릭 이벤트를 통과시키고, 모달이 활성화될 때만 이벤트를 받도록 합니다. -->
+        <div id="uiOverlay" class="absolute inset-0 pointer-events-auto">
             <div id="scoreContainer" class="absolute top-4 left-4 text-lg text-shadow z-10 hidden">
                 <span>SCORE: </span><span id="scoreEl">0</span>
             </div>
@@ -97,14 +98,6 @@
                     RESTART
                 </button>
             </div>
-            
-            <!-- Mobile touch controls container -->
-            <div id="touchControls" class="absolute bottom-0 left-0 right-0 h-1/4 z-30 hidden">
-                 <button id="touchShootBtn" class="absolute bottom-5 right-5 w-20 h-20 bg-yellow-400/50 border-2 border-yellow-300 rounded-full flex items-center justify-center text-white text-shadow">
-                     <span class="sr-only">Shoot</span>
-                     <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 19-2-2"/><path d="m15 13-3 3L3 3l7 19 3-10 6-4Z"/></svg>
-                 </button>
-            </div>
         </div>
     </div>
 
@@ -129,8 +122,6 @@
             const scoreContainer = document.getElementById('scoreContainer');
             const gameContainer = document.getElementById('gameContainer');
             const uiOverlay = document.getElementById('uiOverlay');
-            const touchControls = document.getElementById('touchControls');
-            const touchShootBtn = document.getElementById('touchShootBtn');
 
             // --- Game State Variables ---
             let animationId;
@@ -139,7 +130,8 @@
             let projectiles = [];
             let asteroids = [];
             let particles = [];
-            const keys = { a: { pressed: false }, d: { pressed: false }, ArrowLeft: { pressed: false }, ArrowRight: { pressed: false } };
+            // Define keys in lowercase as event.key will be normalized to lowercase
+            const keys = { a: { pressed: false }, d: { pressed: false }, arrowleft: { pressed: false }, arrowright: { pressed: false } };
             let asteroidSpawnTimeout;
             let gameActive = false;
             let gamePaused = false;
@@ -222,7 +214,8 @@
                 const scaleY = canvas.height / oldHeight;
 
                 if (player) player.rescale(scaleX, scaleY);
-                [...projectiles, ...asteroids, ...particles].forEach(p => p.rescale(scaleX, scaleY));
+                // Filter out invalid objects before attempting to rescale
+                [...projectiles, ...asteroids, ...particles].filter(p => p && typeof p.rescale === 'function').forEach(p => p.rescale(scaleX, scaleY));
             }
 
             // --- Game Object Classes ---
@@ -429,8 +422,8 @@
             }
             
             function shoot() {
-                 if (!gameActive || gamePaused) return;
-                 projectiles.push(new Projectile({
+                if (!gameActive || gamePaused) return;
+                projectiles.push(new Projectile({
                     position: { x: player.position.x + player.width / 2, y: player.position.y },
                     velocity: { x: 0, y: -10 }
                 }));
@@ -463,8 +456,8 @@
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 
                 player.velocity.x = 0;
-                if (keys.a.pressed || keys.ArrowLeft.pressed) player.velocity.x = -player.speed;
-                if (keys.d.pressed || keys.ArrowRight.pressed) player.velocity.x = player.speed;
+                if (keys.a.pressed || keys.arrowleft.pressed) player.velocity.x = -player.speed;
+                if (keys.d.pressed || keys.arrowright.pressed) player.velocity.x = player.speed;
                 player.update();
 
                 particles.forEach(p => p.update());
@@ -523,7 +516,9 @@
                 pauseModal.classList.remove('flex');
                 pauseModal.classList.add('hidden');
                 scoreContainer.classList.remove('hidden');
-                touchControls.classList.remove('hidden');
+                
+                // 게임이 시작되면 uiOverlay의 pointer-events를 none으로 설정하여 캔버스 클릭을 허용합니다.
+                uiOverlay.style.pointerEvents = 'none'; 
                 
                 cancelAnimationFrame(animationId);
                 animate(performance.now());
@@ -539,7 +534,9 @@
                 gameOverModal.classList.remove('hidden');
                 gameOverModal.classList.add('flex');
                 scoreContainer.classList.add('hidden');
-                touchControls.classList.add('hidden');
+
+                // 게임 오버 시 uiOverlay의 pointer-events를 auto로 설정하여 모달 상호작용을 허용합니다.
+                uiOverlay.style.pointerEvents = 'auto';
             }
 
             function togglePause() {
@@ -552,12 +549,14 @@
                     pauseModal.classList.remove('hidden');
                     pauseModal.classList.add('flex');
                     scoreContainer.classList.add('hidden');
-                    touchControls.classList.add('hidden');
+                    // 일시정지 시 uiOverlay의 pointer-events를 auto로 설정하여 모달 상호작용을 허용합니다.
+                    uiOverlay.style.pointerEvents = 'auto';
                 } else {
                     pauseModal.classList.add('hidden');
                     pauseModal.classList.remove('flex');
                     scoreContainer.classList.remove('hidden');
-                    touchControls.classList.remove('hidden');
+                    // 일시정지 해제 시 uiOverlay의 pointer-events를 none으로 설정하여 캔버스 클릭을 허용합니다.
+                    uiOverlay.style.pointerEvents = 'none';
                     lastFrameTime = performance.now();
                     animate(performance.now());
                     spawnAsteroids();
@@ -575,36 +574,43 @@
                     togglePause();
                     return;
                 }
-                if (keys[key] !== undefined) keys[key].pressed = true;
+                // 입력된 키를 항상 소문자로 변환하여 `keys` 객체에 접근합니다.
+                const normalizedKey = key.toLowerCase(); 
+                if (keys[normalizedKey] !== undefined) {
+                    keys[normalizedKey].pressed = true;
+                }
             });
 
             window.addEventListener('keyup', ({ key }) => {
-                if (keys[key] !== undefined) keys[key].pressed = false;
+                // 입력된 키를 항상 소문자로 변환하여 `keys` 객체에 접근합니다.
+                const normalizedKey = key.toLowerCase();
+                if (keys[normalizedKey] !== undefined) {
+                    keys[normalizedKey].pressed = false;
+                }
             });
             
             // Event listener for shooting with a mouse click on the canvas.
             canvas.addEventListener('click', shoot);
             
-            // Event listener for the dedicated mobile shoot button.
-            touchShootBtn.addEventListener('click', (e) => {
-                e.preventDefault(); // Prevents the click from also firing the canvas click event.
-                shoot();
-            });
-
             let touchStartX = null;
+            let touchStartY = null; // 터치 시작 Y 좌표 추적
             let playerStartDragX = null;
-            
+            const TAP_THRESHOLD = 10; // 탭으로 간주할 최대 이동 거리 (픽셀)
+
             canvas.addEventListener('touchstart', (e) => {
                 if (!gameActive || gamePaused) return;
-                // Handle only the first touch to prevent multi-touch issues.
+                e.preventDefault(); // 브라우저 기본 동작(스크롤, 확대/축소) 방지
+                // 첫 번째 터치만 처리
                 if (e.touches.length === 1) {
                     touchStartX = e.touches[0].clientX;
+                    touchStartY = e.touches[0].clientY; // Y 좌표 저장
                     if (player) playerStartDragX = player.position.x;
                 }
             });
 
             canvas.addEventListener('touchmove', (e) => {
                 if (!gameActive || gamePaused || touchStartX === null || !player) return;
+                e.preventDefault(); // 이동 중 브라우저 기본 동작 방지
                 
                 const touchCurrentX = e.touches[0].clientX;
                 const deltaX = touchCurrentX - touchStartX;
@@ -615,8 +621,22 @@
                 player.position.x = playerStartDragX + (deltaX * scaleX);
             });
 
-            canvas.addEventListener('touchend', () => {
+            canvas.addEventListener('touchend', (e) => {
+                if (!gameActive || gamePaused) return; // 게임 상태 확인 추가
+                
+                // 탭(최소한의 이동)이었는지 확인하여 총알 발사
+                if (touchStartX !== null && touchStartY !== null) {
+                    const endX = e.changedTouches[0].clientX;
+                    const endY = e.changedTouches[0].clientY;
+                    const distance = Math.hypot(endX - touchStartX, endY - touchStartY);
+
+                    if (distance < TAP_THRESHOLD) {
+                        shoot(); // 탭인 경우 총알 발사
+                    }
+                }
+
                 touchStartX = null;
+                touchStartY = null;
                 playerStartDragX = null;
             });
 
@@ -632,6 +652,8 @@
             // --- Initial Setup ---
             setCanvasSize();
             setStarryBackground();
+            // 초기 로딩 시 startModal이 보이므로 uiOverlay의 pointer-events를 auto로 설정합니다.
+            uiOverlay.style.pointerEvents = 'auto';
         });
     </script>
 </body>
