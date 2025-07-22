@@ -32,8 +32,8 @@
         }
     </style>
     <!-- Chosen Palette: Cosmic Slate -->
-    <!-- Application Structure Plan: The application uses a standard game state flow: 1) Start Screen, 2) Active Game Screen, 3) Game Over Screen. This structure was chosen for its intuitive user experience in arcade-style games. The Start Screen provides instructions and a clear entry point. The Active Game Screen, rendered on a canvas, offers an immersive, distraction-free play area. The Game Over Screen provides clear feedback on performance (final score) and an immediate option to re-engage ('Restart'), promoting replayability. UI elements are HTML overlays for clarity and separation from the canvas rendering logic. -->
-    <!-- Visualization & Content Choices: Report Info: Game mechanics (movement, shooting, asteroids). Goal: Create a playable game. Viz/Presentation Method: The core game (ship, asteroids, bullets) is rendered on an HTML Canvas for high-performance 2D graphics. UI elements (score, menus) are HTML overlays for better text rendering and interactivity. Interaction: Keyboard events ('a', 'd') for movement, mouse clicks for shooting, and button clicks for game state changes. Justification: This hybrid approach (Canvas for graphics, HTML for UI) is the industry standard for web games, maximizing performance and accessibility. The visuals are generated procedurally (Canvas shapes) to ensure the application is a single, self-contained file. Library/Method: Vanilla JavaScript for all game logic. -->
+    <!-- Application Structure Plan: The application now features a Start Screen, an Active Game Screen with pause functionality, and a Game Over Screen. This sequential flow ensures intuitive user interaction. The Pause Menu (accessible via ESC) introduces a non-linear flow, allowing users to temporarily suspend and resume gameplay or restart, enhancing control and usability. The game canvas is now in portrait orientation, making it more suitable for mobile devices. UI overlays (menus, score) are distinct HTML elements for clarity and accessibility, separate from the Canvas rendering. -->
+    <!-- Visualization & Content Choices: Report Info: Game mechanics (movement, shooting, asteroids), plus new pause/resume/restart functionality. Goal: Create a playable and controllable game. Viz/Presentation Method: Game elements (ship, asteroids, bullets) are rendered on an HTML Canvas. UI elements (score, start, game over, pause menus) are HTML overlays, leveraging Tailwind for responsive styling. Interaction: Keyboard (A/D for movement, ESC for pause), mouse click for shooting, and button clicks for menu navigation. Justification: This hybrid approach remains optimal for web-based games, balancing performance with UI flexibility. Canvas is used for dynamic game rendering, while HTML/Tailwind handles static/overlay UI for better control and accessibility. Procedural graphics ensure the single-file constraint. New pause/resume logic enhances user control. The portrait canvas adapts to common mobile screen orientations. -->
     <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
 </head>
 <body class="bg-slate-900 text-white flex items-center justify-center h-screen">
@@ -50,6 +50,7 @@
                 <h2 class="text-xl font-bold text-sky-400 mb-2">조작법</h2>
                 <p><span class="font-bold text-sky-300">A / D 키:</span> 좌우 이동</p>
                 <p><span class="font-bold text-sky-300">마우스 좌클릭:</span> 총알 발사</p>
+                <p class="mt-2"><span class="font-bold text-sky-300">ESC 키:</span> 게임 일시정지 / 메뉴</p>
             </div>
             <button id="startGameBtn" class="mt-8 bg-sky-500 text-slate-900 font-bold py-3 px-8 rounded-lg text-2xl button-glow">
                 START GAME
@@ -65,6 +66,16 @@
             </button>
         </div>
 
+        <div id="pauseModal" class="absolute inset-0 bg-black bg-opacity-60 flex-col items-center justify-center text-center p-4 z-20 hidden">
+            <h1 class="text-5xl md:text-6xl font-bold text-sky-300 text-shadow">PAUSED</h1>
+            <button id="resumeGameBtn" class="mt-8 bg-sky-500 text-slate-900 font-bold py-3 px-8 rounded-lg text-2xl button-glow">
+                RESUME
+            </button>
+            <button id="restartFromPauseBtn" class="mt-4 bg-gray-500 text-slate-900 font-bold py-3 px-8 rounded-lg text-2xl button-glow">
+                RESTART
+            </button>
+        </div>
+
         <canvas id="gameCanvas"></canvas>
     </div>
 
@@ -75,8 +86,11 @@
         const finalScoreEl = document.getElementById('finalScoreEl');
         const startModal = document.getElementById('startModal');
         const gameOverModal = document.getElementById('gameOverModal');
+        const pauseModal = document.getElementById('pauseModal');
         const startGameBtn = document.getElementById('startGameBtn');
         const restartGameBtn = document.getElementById('restartGameBtn');
+        const resumeGameBtn = document.getElementById('resumeGameBtn');
+        const restartFromPauseBtn = document.getElementById('restartFromPauseBtn');
         const scoreContainer = document.getElementById('scoreContainer');
 
         let animationId;
@@ -88,18 +102,22 @@
         let keys = { a: { pressed: false }, d: { pressed: false } };
         let asteroidSpawnInterval;
         let gameActive = false;
+        let gamePaused = false;
+        let lastFrameTime = 0; // For time-based score increase
+        let scorePerSecond = 5; // Score gained per second
         
         function setCanvasSize() {
-            const maxWidth = 800;
-            const maxHeight = 600;
+            // Portrait orientation: height is greater than width
+            const maxWidth = 500; 
+            const maxHeight = 750; // Increased height relative to width for portrait
             const aspectRatio = maxWidth / maxHeight;
             
-            let width = window.innerWidth * 0.9;
-            let height = window.innerHeight * 0.9;
+            let width = window.innerWidth * 0.8;
+            let height = window.innerHeight * 0.8;
 
-            if (width / height > aspectRatio) {
+            if (width / height > aspectRatio) { // If window is wider than canvas aspect ratio
                 width = height * aspectRatio;
-            } else {
+            } else { // If window is taller than canvas aspect ratio
                 height = width / aspectRatio;
             }
             
@@ -112,11 +130,11 @@
 
         class Player {
             constructor() {
-                this.width = canvas.width * 0.08;
+                this.width = canvas.width * 0.12; // Adjusted for portrait mode
                 this.height = this.width * 0.5;
                 this.position = {
                     x: (canvas.width / 2) - (this.width / 2),
-                    y: canvas.height - this.height - 10
+                    y: canvas.height - this.height - 20 // Slightly higher from bottom
                 };
                 this.velocity = { x: 0, y: 0 };
                 this.speed = 5;
@@ -175,7 +193,7 @@
             constructor({ position, velocity }) {
                 this.position = position;
                 this.velocity = velocity;
-                this.radius = canvas.width * 0.035;
+                this.radius = canvas.width * 0.05; // Adjusted size for portrait
                 this.sides = Math.floor(Math.random() * 3) + 5;
                 this.angle = 0;
                 this.rotationSpeed = (Math.random() - 0.5) * 0.04;
@@ -239,10 +257,9 @@
         function spawnAsteroids() {
             const spawnDelay = Math.random() * 2000 + 1000;
             asteroidSpawnInterval = setTimeout(() => {
-                if (!gameActive) return;
+                if (!gameActive || gamePaused) return; // Prevent spawning if paused
                 
                 const x = Math.random() * canvas.width;
-                // Reduced speed for asteroids (original was * 60)
                 const speed = (canvas.height / 3000) * 30; 
                 
                 asteroids.push(new Asteroid({
@@ -281,12 +298,22 @@
             scoreEl.innerText = score;
             finalScoreEl.innerText = score;
             gameActive = true;
+            gamePaused = false;
+            lastFrameTime = performance.now(); // Initialize lastFrameTime
         }
 
-        function animate() {
-            if (!gameActive) return;
+        function animate(currentTime) {
+            if (!gameActive || gamePaused) return; // Stop animation if paused
             animationId = requestAnimationFrame(animate);
-            // Changed to a solid, very dark space color
+
+            // Calculate delta time for consistent score increase
+            const deltaTime = currentTime - lastFrameTime;
+            lastFrameTime = currentTime;
+
+            // Increase score over time
+            score += (scorePerSecond * (deltaTime / 1000));
+            scoreEl.innerText = Math.floor(score); // Display as integer
+            
             ctx.fillStyle = '#050510'; 
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
@@ -331,8 +358,8 @@
                     const dist = Math.hypot(projectile.position.x - asteroid.position.x, projectile.position.y - asteroid.position.y);
                     if (dist - asteroid.radius - projectile.radius < 1) {
                         createExplosion(asteroid, '#9ca3af');
-                        score += 100;
-                        scoreEl.innerText = score;
+                        score += 100; // Additional score for destroying asteroid
+                        scoreEl.innerText = Math.floor(score);
                         setTimeout(() => {
                             asteroids.splice(aIndex, 1);
                             projectiles.splice(pIndex, 1);
@@ -345,11 +372,13 @@
         function startGame() {
             init();
             gameActive = true;
+            gamePaused = false;
             startModal.classList.add('hidden');
             gameOverModal.classList.add('hidden');
+            pauseModal.classList.add('hidden'); 
             scoreContainer.classList.remove('hidden');
-            animate();
-            setTimeout(spawnAsteroids, 3000);
+            animate(performance.now()); // Pass initial time to animate
+            setTimeout(spawnAsteroids, 1500); // Changed from 3000ms to 1500ms
         }
 
         function endGame() {
@@ -357,15 +386,41 @@
             cancelAnimationFrame(animationId);
             clearTimeout(asteroidSpawnInterval);
             gameOverModal.classList.remove('hidden');
-            finalScoreEl.innerText = score;
+            finalScoreEl.innerText = Math.floor(score);
             scoreContainer.classList.add('hidden');
+        }
+
+        function togglePause() {
+            if (!gameActive || gameOverModal.classList.contains('flex')) return; 
+
+            gamePaused = !gamePaused;
+            if (gamePaused) {
+                cancelAnimationFrame(animationId);
+                clearTimeout(asteroidSpawnInterval);
+                pauseModal.classList.remove('hidden');
+                pauseModal.classList.add('flex'); 
+                scoreContainer.classList.add('hidden');
+            } else {
+                pauseModal.classList.add('hidden');
+                pauseModal.classList.remove('flex');
+                scoreContainer.classList.remove('hidden');
+                lastFrameTime = performance.now(); // Reset lastFrameTime to prevent score jump
+                animate(performance.now());
+                setTimeout(spawnAsteroids, 100); 
+            }
         }
 
         startGameBtn.addEventListener('click', startGame);
         restartGameBtn.addEventListener('click', startGame);
+        resumeGameBtn.addEventListener('click', togglePause);
+        restartFromPauseBtn.addEventListener('click', startGame);
 
         window.addEventListener('keydown', ({ key }) => {
-            if (!gameActive) return;
+            if (key === 'Escape') {
+                togglePause();
+                return;
+            }
+            if (!gameActive || gamePaused) return; 
             switch (key.toLowerCase()) {
                 case 'a': keys.a.pressed = true; break;
                 case 'd': keys.d.pressed = true; break;
@@ -373,7 +428,7 @@
         });
 
         window.addEventListener('keyup', ({ key }) => {
-            if (!gameActive) return;
+            if (!gameActive || gamePaused) return; 
             switch (key.toLowerCase()) {
                 case 'a': keys.a.pressed = false; break;
                 case 'd': keys.d.pressed = false; break;
@@ -381,7 +436,7 @@
         });
 
         window.addEventListener('click', (event) => {
-            if (!gameActive || !startModal.classList.contains('hidden')) return;
+            if (!gameActive || gamePaused || !startModal.classList.contains('hidden') || gameOverModal.classList.contains('flex')) return;
             
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
@@ -402,7 +457,7 @@
             }
         });
 
-        setCanvasSize();
+        setCanvasSize(); 
     </script>
 </body>
 </html>
